@@ -149,7 +149,7 @@ def replace_values(df):
     return df
 
 #combining all options for custom preprocess function
-def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], 
+def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], target_edge = False,
                  target_outlier = False, gaussian = False, clustering = False, calculate_layers = False):
     if path_csv is not None:
         #get y from csv and reshape
@@ -161,15 +161,15 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
         y_demo = y_demo.flatten()
         
          #get X from gdal function
-        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
+        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index, calculate_edge = target_edge)
         X_demo = raw.drop('y', axis = 1)
     else:
         #get X from gdal function
-        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
+        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index, calculate_edge = target_edge)
         y_demo = raw.y
         X_demo = raw.drop('y', axis = 1)
     
-
+    
     #X_demo = X_demo[['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11','B12', 'B8A']]
 
     if target_outlier is not False:
@@ -215,6 +215,41 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
         
     return X_demo, y_demo
 
+
+#-- PREDICTION --
+#combining multiple models by updating a base model with specified classes of additional models
+def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], class_lists = [[14], [15]], nrcan_name = 'land_cover.tif'):
+    
+    pred_list = []
+    
+    
+    
+    for i in range(len(models)):
+        test_X, test_y = process_data(path_csv, path_raws, index = index, 
+                                      target_edge = process_dict['target_edge'][i],
+                                      target_outlier = process_dict['target_outlier'][i],
+                                      gaussian = process_dict['gaussian'][i],
+                                      clustering = process_dict['clustering'][i],
+                                      calculate_layers = process_dict['calculate_layers'][i], nrcan_name = nrcan_name)
+        pred = pd.DataFrame(models[i].predict(test_X))
+        pred_list.append(pred)
+        
+        if i in binary['model']:
+               for j in range(len(binary['class'])):
+                    pred_list[i] = pred_list[i].replace(1, binary['class'][j])
+    
+    #take first model as base model
+    base_pred = pred_list[0]
+    
+    #select only classes in list from additional forest
+    for i in range(len(class_lists)):
+        subset = pred_list[i + 1][pred_list[i + 1].isin(class_lists[i]) ]
+        #updat base_pred with subset
+        base_pred.update(subset)
+        #convert to int
+        base_pred = base_pred.astype('int')
+    
+    return base_pred, test_y
 
 #--EVALUATION--
 
