@@ -10,6 +10,7 @@ import glob
 from osgeo.gdalconst import *
 from osgeo import gdal
 from scipy.ndimage import gaussian_filter, median_filter
+from skimage import feature
 
 from copy import deepcopy
 
@@ -17,16 +18,25 @@ from copy import deepcopy
 #--IMPORT DATA--
 
 #Turn raws into dataframe from directory path using gdal
-def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11]):
+def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11], calculate_edge = None, sigma = 3):
     raw_names = list(os.listdir(dir_path))
     
     raw_df = pd.DataFrame()
     
     for i in raw_names:
         raw_img = gdal.Open(os.path.join(dir_path, i))
+        raw_array = np.array(raw_img.ReadAsArray())
+        band = i[index[0]:index[1]]
+        raw_df[band] = raw_array.flatten()
         
-        raw_array = np.array(raw_img.ReadAsArray()).flatten()
-        raw_df[i[index[0]:index[1]]] = raw_array
+        if calculate_edge == band:
+            print('getting edge')
+            edge = feature.canny(raw_array, sigma = sigma)
+    
+    try:
+        raw_df['edge'] = edge.flatten()
+    except:
+        pass
     
     nrcan = gdal.Open(os.path.join(dir_path, '..', nrcan_name))
     nrcan_array = np.array(nrcan.ReadAsArray())
@@ -71,10 +81,10 @@ def outlier_fix(dataframe):
     for column in dataframe.columns:
         
         #make sure we don't transform y column
-        if column != 'y':
+        if column[0] == 'B':
             #create deepcopy to change
             temp_band = deepcopy(dataframe.loc[:,column].values)
-            outlier = np.quantile(temp_band, q = 0.75) * 2
+            outlier = int(np.quantile(temp_band, q = 0.75)) * 2
               
             #replace any above outlier with mean    
             temp_band[temp_band > outlier] = np.mean(temp_band)
@@ -122,6 +132,8 @@ def add_extra_layers(df):
     df['MIVI'] = df.B09/df.B11
     #GDVI
     df['GDVI'] = df.B08 - df.B03
+    
+    return df
 
     
 def replace_values(df):
@@ -135,6 +147,74 @@ def replace_values(df):
     df.fillna(999, inplace=True)
 
     return df
+
+#combining all options for custom preprocess function
+def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], 
+                 target_outlier = False, gaussian = False, clustering = False, calculate_layers = False):
+    if path_csv is not None:
+        #get y from csv and reshape
+        raw = pd.read_csv(path_csv)
+        raw.land_cover = raw.land_cover.astype('int')
+        y_demo = raw['land_cover']
+        #reshape to use y_demo with gaussian X
+        y_demo = y_demo.values.reshape(2500, 2100).T
+        y_demo = y_demo.flatten()
+        
+         #get X from gdal function
+        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
+        X_demo = raw.drop('y', axis = 1)
+    else:
+        #get X from gdal function
+        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
+        y_demo = raw.y
+        X_demo = raw.drop('y', axis = 1)
+    
+
+    #X_demo = X_demo[['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11','B12', 'B8A']]
+
+    if target_outlier is not False:
+        if target_outlier[0] == 'B':
+            X_demo[target_outlier] = outlier_fix(X_demo)[target_outlier]
+        else:
+            X_demo = outlier_fix(X_demo)
+    
+    if gaussian == True:
+        #reset demo raw for matching filtering
+        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
+        #demo_raw = outlier_fix(demo_raw)
+        #filter raws from path
+        gauss_demo = filter_raws(path_raws, nrcan_name = nrcan_name, index = index)
+
+        #concat gauss and raw
+        gauss_demo_reset = gauss_demo.drop('y', axis = 1)
+        #rename gauss columns
+        gauss_names = [f'{name}g' for name in gauss_demo_reset.columns]
+        gauss_demo_reset.columns = gauss_names
+        #reset indices
+        raw.reset_index(inplace=True, drop=True)
+        gauss_demo_reset.reset_index(inplace=True, drop=True)    
+        merged_df = pd.concat([raw, gauss_demo_reset], axis = 1)
+
+        #select X values from gaussian dataframe
+        X_demo = merged_df.drop('y', axis = 1)
+
+        #X_demo = X_demo[['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11',
+       #'B12', 'B8A', 'B01g', 'B02g', 'B03g', 'B04g', 'B05g', 'B06g', 'B07g', 'B08g', 'B09g', 'B11g', 'B12g', 'B8Ag']]
+        
+    if clustering is not False:
+        param = pickle.load(open(clustering, 'rb'))
+        demo_cluster = param.predict(X_demo.astype('double'))
+        X_demo['clusters'] = demo_cluster
+        
+    if calculate_layers is not False:
+        X_demo = add_layers(X_demo)
+        X_demo = replace_values(X_demo)
+        
+        if calculate_layers == 'Extra':
+            X_demo = add_extra_layers(X_demo)
+        
+    return X_demo, y_demo
+
 
 #--EVALUATION--
 
