@@ -5,10 +5,13 @@ import pandas as pd
 #system packages
 import os
 import glob
+import pickle
 
 #loading images
 from osgeo.gdalconst import *
 from osgeo import gdal
+from affine import Affine
+
 from scipy.ndimage import gaussian_filter, median_filter
 from skimage import feature
 
@@ -29,9 +32,11 @@ def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-
         band = i[index[0]:index[1]]
         raw_df[band] = raw_array.flatten()
         
+        #if calculate edge is equal to band name, take that band image and get canny edge
         if calculate_edge == band:
             print('getting edge')
             edge = feature.canny(raw_array, sigma = sigma)
+            edge = edge.astype(int)
     
     try:
         raw_df['edge'] = edge.flatten()
@@ -148,8 +153,37 @@ def replace_values(df):
 
     return df
 
+def get_geocoord(raws_path):
+    
+    #take first raw as example
+    file_name = list(os.listdir(raws_path))[0]
+    file_path = os.path.join(raws_path, file_name)
+    
+    
+    #open raw and get affine
+    ds = gdal.Open(file_path, gdal.GA_ReadOnly)
+    T0 = Affine.from_gdal(*ds.GetGeoTransform())
+    
+    # get shape of rows and columns
+    cols, rows = np.meshgrid(np.arange(ds.RasterYSize), np.arange(ds.RasterXSize))
+    ds = None  # close
+    
+    # reference the pixel centre, so it needs to be translated by 50%:
+    T1 = T0 * Affine.translation(0.5, 0.5)
+    #transform from pixel coordinates to world coordinates, multiply the coordinates with the matrix
+    rc2xy = lambda r, c: T1 * (c, r)
+    
+    # All eastings and northings -- this is much faster than np.apply_along_axis
+    eastings, northings = np.vectorize(rc2xy, otypes=[float, float])(rows, cols)
+
+    #convert to columns
+    lat = eastings.flatten()
+    long = northings.flatten()
+    
+    return lat, long
+
 #combining all options for custom preprocess function
-def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], target_edge = False,
+def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], target_edge = False, geocoords = False,
                  target_outlier = False, gaussian = False, clustering = False, calculate_layers = False):
     if path_csv is not None:
         #get y from csv and reshape
@@ -169,8 +203,9 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
         y_demo = raw.y
         X_demo = raw.drop('y', axis = 1)
     
+    if geocoords is True:
+        X_demo['lat'], X_demo['long'] = get_geocoord(path_raws)
     
-    #X_demo = X_demo[['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11','B12', 'B8A']]
 
     if target_outlier is not False:
         if target_outlier[0] == 'B':
@@ -198,9 +233,6 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
         #select X values from gaussian dataframe
         X_demo = merged_df.drop('y', axis = 1)
 
-        #X_demo = X_demo[['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B11',
-       #'B12', 'B8A', 'B01g', 'B02g', 'B03g', 'B04g', 'B05g', 'B06g', 'B07g', 'B08g', 'B09g', 'B11g', 'B12g', 'B8Ag']]
-        
     if clustering is not False:
         param = pickle.load(open(clustering, 'rb'))
         demo_cluster = param.predict(X_demo.astype('double'))
@@ -217,6 +249,18 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
 
 
 #-- PREDICTION --
+
+#creating a binary model: processing function for test and train data
+def convert_binary(dataframe, target_class, col_name = 'y'):
+    all_classes = list(range(1, 20))
+    
+    all_classes.remove(target_class)
+    
+    dataframe = dataframe.replace({col_name: all_classes}, 0)
+    dataframe = dataframe.replace({col_name: target_class}, 1)
+    
+    return dataframe
+
 #combining multiple models by updating a base model with specified classes of additional models
 def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], class_lists = [[14], [15]], nrcan_name = 'land_cover.tif'):
     
@@ -227,6 +271,7 @@ def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0,
     for i in range(len(models)):
         test_X, test_y = process_data(path_csv, path_raws, index = index, 
                                       target_edge = process_dict['target_edge'][i],
+                                      geocoords = process_dict['geocoords'][i],
                                       target_outlier = process_dict['target_outlier'][i],
                                       gaussian = process_dict['gaussian'][i],
                                       clustering = process_dict['clustering'][i],
@@ -235,8 +280,11 @@ def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0,
         pred_list.append(pred)
         
         if i in binary['model']:
-               for j in range(len(binary['class'])):
-                    pred_list[i] = pred_list[i].replace(1, binary['class'][j])
+            pred = pd.DataFrame((models[i].predict_proba(test_X)[:,1] >= 0.6).astype(bool))
+            pred_list.append(pred)
+               
+            for j in range(len(binary['class'])):
+                pred_list[i] = pred_list[i].replace(1, binary['class'][j])
     
     #take first model as base model
     base_pred = pred_list[0]
