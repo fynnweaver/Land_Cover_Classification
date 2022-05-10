@@ -1,31 +1,46 @@
 ## Evaluated models
 
+### Syntax
+
+Models are annoted in the following format where notes where kept:
+
+version \<number> = \<accuracy>(\<balanced accuracy>) || \<processing step> & \<processing step> & \<...>|| \<train extents>
+
+Shorthand:
+- calculated layers (4) refers to: calculating and adding NDVI, Moisture, NDWI, NDSI
+- cluster (n = \<int>) refers to: running k-means clustering with n as cluster # and adding cluster labels as a feature
+- edge (\<band name>, sig = \<int>) refers to: running sklearn canny edge detection on input band name tiff with a sigma of input
+- geocoords refers to: retrieving the geocoordinates of each pixel in the scene and converting them to two input features `lat` and `long`.
+
+### Version list
+
 `evaluation` main folder
 
 &rarr; `test_data`: evaluation run on test data, ie. data split from the extents prior to training but still all pixels from those train extents and with equal class distribution
 
-- `toronto`, `simcoe`, `sask`, `labrador` = standard bands, no parameters, 5K each value, no scaling, in turn toronto, simcoe, sask, labrador extents only
-- `base_run` = standard bands, no parameters, 5K each value, no scaling, sim and lab
-- `scaled` = standard bands, no params, 5K each value, StandardScaler() -> improved SVC, sask and tor
-- `large_set` = standard bands, no parameters, 18K each value, no scaling, sim and lab
-- `gaussian` = standard bands transformed via gaussian filter, 18K each value, no scaling, sim and lab
+- `toronto`, `simcoe`, `sask`, `labrador` = || 5K/class || toronto, simcoe, sask, labrador
+- `base_run` = || 5K/class || sim and lab 
+- `scaled` = ||  5K/class, StandardScaler() || sask, tor
+    - improves SVC no effect on RF
+- `large_set` = 18K/class || sim and lab
+- `gaussian` = bands transformed via gaussian filter (sigma 1), 18K/class || sim and lab
 
-&rarr; `demo`: evaluation run on demo site data (extent provided by Fraser for the working group) ie. entire extent completely unknown to model and with unequal class distribution. Divided into subfolders based on model used. Below are processing details for each version. *RFC hypers:* unless otherwise stated used 300 trees, max depth 25 and max features 2. This changes for version 11 and later where max depth 15 is used instead; Detailed map (15 color values) starts with version 10.
-- version_1 = 31.41% trained on sim & lab 18K each
-- version_2 =  31.55% trained on gaussian (sigma 5) sim & lab, 18K each
-- version_3 = 33.22% trained on gaussian (sigma 1) sim & lab, 18K each
-- version_4 = 37.49% trained on gaussian (sigma 1) sim, lab, tor and james, 40K each random
-- version_5 = 34.21% trained on sim, lab, tor, james all bands, 40K each random [?? missing something can't recreate map]
-- version_6 = 33.97% (b: 34.84%) trained on raw and gaussian (sig 1) sim, lab, tor, james all bands, 40k each random
-- version_7 = 33.37% (b:33.95%) raw and median (size 10) sim, lab, tor, james all bands, 40k each random
-- version_8 = 42.11% (b:37.22%) raw with calculated layers sim, lab, tor, james all bands, 40k each
-- version_9 = 36.50 (b: 35.80%) raw with calculated layres and gauss (sig 1) sim, lab, tor, james all bands 40k each
-- version_10 = 50.87 (b: 40.89%) raw with calculated layers and column B01f with B01 where outliers < q3x2 = median sim, lab, tor, james, sjames all bands, 80k each 47K snow ; 15 max depth
-- version 11 = 46.11 (b: 39.43) raw with calculated layers and column B01f with B01 where outliers < q3x2 = median sim, lab, tor, james, sjames, calgary all bands, 60k each no snow
-- version 12 = 48.10 (b: 39.83) raw with calculated layers and cluster (n = 4) column; sim, lab, tor, james, sjames, cal, trois 100K classes with 49K snow class
-- version 13 = 48.11 (40.06) raw with calculated layers (4) and edge ('B03', sig = 1); sim, lab, tor, james, sjames, cal 150K with 49K snow class
-- version 14 = 54.39 (40.91) raw with calc layers (4), outlier B01f same as v. 10, and edge ('B8A, sig = 3); sim , lab, tor, james, sjames 100K with 47K snow
-- version 15 = 53.86 (38.94) raw with calc layers(4), geocoords, and edge ('B8A, sig = 3); sim, lab, tor, james, sjames, cal, trois, winn, 150K with 49K snow
+&rarr; `demo`: evaluation run on demo site data (extent provided by Fraser for the working group) ie. entire extent completely unknown to model and with unequal class distribution. Divided into subfolders based on model used. Below are processing details for each version. *RFC hypers:* unless otherwise stated used 300 trees, max depth 25 and max features 2. This changes for *version 10 and later* where max depth 15 is used instead; Detailed map (15 color values) starts with version 10.
+- version_1 = 31.41% || 18K each || sim, lab 
+- version_2 =  31.55% || gaussian (sigma 5) bands, 18K/class || sim, lab
+- version_3 = 33.22% || gaussian (sigma 1) bands, 18K/class || sim, lab
+- version_4 = 37.49% || gaussian (sigma 1), 40K/class || sim, lab, tor and james
+- version_5 = 34.21% || 40K/class|| sim, lab, tor, james  [?? missing something can't recreate map]
+- version_6 = 33.97% (34.84%) || raws bands and gaussian (sig 1) bands 40K/class || sim, lab, tor, james 
+- version_7 = 33.37% (b:33.95%) || raws & median (size 10) transformed bands 40K/class || sim, lab, tor, james
+- version_8 = 42.11% (b:37.22%) || raws & calculated layers (4) || sim, lab, tor, james 
+- version_9 = 36.50 (b: 35.80%) || raws & calculated layres (4) and gaussian (sig 1) bands, 40K/class || sim, lab, tor, james
+- version_10 = 50.87 (b: 40.89%) || raws & calculated layers (4) & B01f with B01 where outliers < q3x2 = median & 80K/class, 47K snow class || sim, lab, tor, james, sjames all bands
+- version 11 = 46.11 (b: 39.43) || raws with calculated layers & B01f with B01 where outliers < q3x2 = median & 60K/class no snow || sim, lab, tor, james, sjames, calgary
+- version 12 = 48.10 (b: 39.83) || raws & calculated layers (4) & cluster (n = 4) & 100K/class 49K snow class || sim, lab, tor, james, sjames, cal, trois
+- version 13 = 48.11 (40.06) || raws & calculated layers (4) & edge ('B03', sig = 1) & 150K/class 49K snow class || sim, lab, tor, james, sjames, cal
+- version 14 = 54.39 (40.91) || raws & calc layers (4) & B01f with B01 where outliers < q3x2 = median & edge ('B8A, sig = 3) & 100K/class 47K snow class || sim , lab, tor, james
+- version 15 = 53.86 (38.94) || raws & calc layers (4) & geocoords & edge ('B8A, sig = 3) & 150K/class 49K snow || sim, lab, tor, james, sjames, cal, trois, winn
 
 ## Other models
 
