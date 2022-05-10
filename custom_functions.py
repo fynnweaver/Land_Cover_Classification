@@ -22,6 +22,28 @@ from copy import deepcopy
 
 #Turn raws into dataframe from directory path using gdal
 def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11], calculate_edge = None, sigma = 3):
+    """
+    Use gdal to create a labelled dataframe of Sentinal-2 band values from a folder of raw band geotiffs using land cover
+    classification from NRCAN. NRCAN extent must be processed using GIS to be the same width, height, projection and
+    resolution as clipped raws extents.
+
+    INPUT
+    -----
+    `dir_path`: string with path to the raw files directory
+    `nrcan_name`: file name of the accompanying nrcan classification extent. File must be in directory above raw directory
+    `index`: Index within raw band file names where the band name is found. For files downloaded directly from EO browser
+    without being renamed this will be [-14, -11], hence it is the default
+    `calculate_edge`: Intakes the string of a raw band name on which to perform sklearn canny edge detection.
+    Returns the feature edge. Default set to None where it will not add this feature.
+    `sigma`: Modifier for the canny edge detection. If edge detection is performed sigma is for canny is inputted sigma.
+    Defaults to 3
+    
+    OUTPUT
+    ------
+    Pandas DataFrame containing a column for each raw band within input directory. 
+    If calculate_edge is not None dataframe includes column 'edge'
+    """
+    
     raw_names = list(os.listdir(dir_path))
     
     raw_df = pd.DataFrame()
@@ -54,6 +76,29 @@ def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-
 
 #Filter photos (gaussian or median) from directory path
 def filter_raws(path_to_dir,  sigma = 5, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11], filter_type = 'gaussian'):
+     """
+    Use gdal to create a labelled dataframe of filtered Sentinal-2 band values from a folder of raw band geotiffs 
+    Classification comes from NRCAN extent which must be processed using GIS to be the same width, height, projection and
+    resolution as clipped raws extents.
+
+    INPUT
+    -----
+    `path_to_dir`: string with path to the raw files directory
+    `sigma`: Modifies the filtering strength. 
+    Varies depending on transformation but generally a higher sigma means a more transformed image.
+    `nrcan_name`: file name of the accompanying nrcan classification extent. File must be in directory above raw directory
+    `index`: Index within raw band file names where the band name is found. For files downloaded directly from EO browser
+    without being renamed this will be [-14, -11], hence it is the default
+    `filter_type`: defines filter to apply. There are two current valid inputs: 'gaussian' or 'median'.
+    Each apply the sklearn implementation of the named image filter
+
+    
+    OUTPUT
+    ------
+    Pandas DataFrame containing a column for each raw band within input directory with values having been transformed
+    by defined filter (gaussian or median). 
+    """
+    
     raw_files = list(os.listdir(path_to_dir))
 
     filter_df = pd.DataFrame()
@@ -80,12 +125,25 @@ def filter_raws(path_to_dir,  sigma = 5, nrcan_name = 'NRCAN_transformed.tif', i
 
 
 def outlier_fix(dataframe):
+    """
+    Creates a deep copy of input dataframe where outliers of each have been converted to mean value.
+    Outliers here are defined as two times the 75% quartile.
+    
+    INPUT
+    ------
+    `dataframe`: pandas dataframe containing raw band values. 
+    Can contain other features as well, function will only effect columns begenning with 'B'
+        
+    OUTPUT
+    ------
+    Pandas DataFrame containing a column of transformed values for each band of input dataframe 
+    """
     
     new_frame = pd.DataFrame()
     
     for column in dataframe.columns:
         
-        #make sure we don't transform y column
+        #make sure we only transform band columns
         if column[0] == 'B':
             #create deepcopy to change
             temp_band = deepcopy(dataframe.loc[:,column].values)
@@ -127,8 +185,6 @@ def add_extra_layers(df):
     """
      #normalized NIR/Blue normalized veg index
     df['NIRB'] = (df.B08 - df.B02)/(df.B08 + df.B02)
-    #green normalized difference veg index
-    df['NIRB'] = (df.B08 - df.B03)/(df.B08 + df.B03)
     #Atmospheric Resistant Green
     df['ARG'] = (df.B03 - df.B04)/(df.B03 + df.B04)
     # yellow veg index
@@ -154,7 +210,17 @@ def replace_values(df):
     return df
 
 def get_geocoord(raws_path):
+    """
+    Generates latitude and longitude geocoordinates from the first raw tiff within the inputted raw directory
     
+    INPUT
+    ------
+    `raws_path`: string with path to the raw files directory
+    
+    OUTPUT
+    ------
+    lat, long: Two np arrays containing the latitude and longitude of the raws within the input directory path respectively 
+    """
     #take first raw as example
     file_name = list(os.listdir(raws_path))[0]
     file_path = os.path.join(raws_path, file_name)
@@ -185,6 +251,41 @@ def get_geocoord(raws_path):
 #combining all options for custom preprocess function
 def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], target_edge = False, geocoords = False,
                  target_outlier = False, gaussian = False, clustering = False, calculate_layers = False):
+    """
+    Master function that combines all above processing functions and applies to raws from input path to raw directory. 
+    Features are generated based on inputted parameters and added as columns to outputted frame
+    By default function function is equivalent to gdal_to_dataframe but with different default parameters
+    
+    INPUT
+    ------
+    `path_csv`: In the case of certain extents the NRCAN land cover tif was corrupted while a csv of correct land cover
+    values remained. 
+    If this is not the case, set path_csv to None and function will proceed with land cover from gdal_to_dataframe
+    `path_raws`: string with path to the raw files directory
+    `nrcan_name`: file name of the accompanying nrcan classification extent. File must be in directory above raw directory
+    `index`: Index within raw band file names where the band name is found. 
+    `target_edge`: If set equal to band name (ex: 'B01') will return canny edge (sigma 3) of that band under column labeled
+    'edge'
+    `geocoords`: If set to True will return lat and long geocoordinates
+    `target_outlier`:  If set equal to band name (ex: 'B01') will return column of values where outliers have been
+    transformed using `outlier_fix`
+    Outlier fixed columns can be recognized with an appended `f` (ex: 'B01f`)
+    `gaussian`: If set to true implements `raw_filters` and returns transformed columns to add on to original raw columns.
+    Filtered columns can be recognized with an appended `g` (ex: 'B01g`)
+    `clustering`: If set to string of path to a k-means clustering (.sav) model, performs k means clustering on raws and 
+    returns column labeled 'cluster'
+    `calculate_layers`: If set to True calculates 4 additional layers from raw values: NDVI, NDWI, Moisture and NDSI.
+    If set to 'Extra' calculates 4 previous layers plus an additional 5 layers: NIRB, ARG, yellow, MIVI, GDVI
+    
+    
+    OUTPUT
+    ------
+    X_demo, y_demo: Two pd DataFrames()
+    \-> X_demo: contains all features generated by function based on input parameters
+    \-> y_demo: contains associated labels of land cover classes
+    """
+    
+    
     if path_csv is not None:
         #get y from csv and reshape
         raw = pd.read_csv(path_csv)
@@ -252,6 +353,20 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
 
 #creating a binary model: processing function for test and train data
 def convert_binary(dataframe, target_class, col_name = 'y'):
+    """
+    Function to convert target land cover class from input dataframe into a One v. Rest binary dataset
+    
+    INPUT
+    ------
+    `dataframe`: pd DataFrame of raws, selected features, and labelled land cover column.
+    `target_class`: int of target land cover class. It will be converted to 1 while all other classes are converted to 0
+    `col_name`: Name of the labeled land cover column. Defaults to 'y'
+    
+    OUTPUT
+    ------
+    Pandas DataFrame with land cover classes converted into binary format
+    """
+    
     all_classes = list(range(1, 20))
     
     all_classes.remove(target_class)
@@ -263,6 +378,49 @@ def convert_binary(dataframe, target_class, col_name = 'y'):
 
 #combining multiple models by updating a base model with specified classes of additional models
 def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], class_lists = [[14], [15]], nrcan_name = 'land_cover.tif'):
+    
+    """
+    Function using master processing function to generate test predictions and then overlap the output of multiple models.
+    Note that this uses predict (not predict_proba) and then overlies specified class of follow up onto a base model,
+    this means the order of inputted models is very important.
+    
+    INPUT
+    ------
+    
+    `models`: list of machine learning models that have already been trained. 
+        \-> The first model in the list is the base model. 
+        \-> The subsequent models reference the parameter `class_list` then update the base model in order
+    `path_csv`: In the case of certain extents the NRCAN land cover tif was corrupted while a csv of correct land cover
+    values remained. 
+        \-> If this is not the case, set path_csv to None and function will proceed with land cover from gdal_to_dataframe
+    `path_raws`: string with path to the raw files directory
+    `process_dict`: Dictionary containing the associated processing parameter steps for each model.
+        \-> See `process_data` function for more details.
+        \-> One example input for a combination of 3 models is: 
+                   process_dict = {
+                        'target_edge': ['B8A', None, None],
+                        'geocoords': [True, False, False],
+                        'target_outlier' : [False, 'B01', False],
+                        'gaussian' : [False, False, True],
+                        'clustering' : [False, False, '../models/kcluster_13.sav'],
+                        'calculate_layers' : [True, 'Extra', True]}
+    `binary`: Dictionary containing information as to whether there is a binary or not. 
+        \-> Should contain two keys `model` and `class`
+        \-> `model`: list of the index of binary array. `class` should be a list of the target classes for each model
+                (ie: the class that is 1)
+        \-> Example: for an input where the second model is binary with a target class of 17:
+                binary_dict = {'model': [1], 'class': [17]}
+    `index`: Index within raw band file names where the band name is found. 
+    `class_lists`: Nested list of the classes to take from each additional model. 
+        - First list corresponds to second entered model, etc...
+    `nrcan_name`: file name of the accompanying nrcan classification extent. File must be in directory above raw directory   
+    
+    OUTPUT
+    ------
+    base_pred, test_y: two np Arrays
+        - base_pred: combined prediction output
+        - test_y: the true values for the extent
+    """
     
     pred_list = []
     
@@ -303,8 +461,13 @@ def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0,
 
 def print_importance(model, x):
     """
-    Input: Model and X prior to split]
-    Output: Series of feature importance coefficients in descending order
+    Return feature importance nicely formatted and sorted
+    
+    INPUT
+    ------
+    `model`: Trained classifier model
+    `x`: dataframe containing columns classifier was trained on
+    
     """
     feature_importances = pd.DataFrame(model.feature_importances_, index = x.columns, columns = ['importance']).sort_values('importance', ascending = False)
     print(feature_importances)
