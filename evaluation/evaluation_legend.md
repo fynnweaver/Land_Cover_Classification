@@ -38,9 +38,10 @@ Shorthand:
 - version_10 = 50.87 (b: 40.89%) || raws & calculated layers (4) & B01f with B01 where outliers < q3x2 = median & 80K/class, 47K snow class || sim, lab, tor, james, sjames all bands
 - version 11 = 46.11 (b: 39.43) || raws with calculated layers & B01f with B01 where outliers < q3x2 = median & 60K/class no snow || sim, lab, tor, james, sjames, calgary
 - version 12 = 48.10 (b: 39.83) || raws & calculated layers (4) & cluster (n = 4) & 100K/class 49K snow class || sim, lab, tor, james, sjames, cal, trois
-- version 13 = 48.11 (40.06) || raws & calculated layers (4) & edge ('B03', sig = 1) & 150K/class 49K snow class || sim, lab, tor, james, sjames, cal
+- version 13 = 48.11 (40.06) || raws & calculated layers (4) & edge ('B03', sig = 1) & gaussian (sig 5) & 150K/class 49K snow class || sim, lab, tor, james, sjames, cal
 - version 14 = 54.39 (40.91) || raws & calc layers (4) & B01f with B01 where outliers < q3x2 = median & edge ('B8A, sig = 3) & 100K/class 47K snow class || sim , lab, tor, james
 - version 15 = 53.86 (38.94) || raws & calc layers (4) & geocoords & edge ('B8A, sig = 3) & 150K/class 49K snow || sim, lab, tor, james, sjames, cal, trois, winn
+- version 16 = 48.84 (39.60) || raws & calc layers (4) & geocoords & edge ('B8A', sig = 3) & gaussian filter (sig 3) & 250K/class 49K snow 150K class 11 || sim, lab, tor, james, sjames, cal, trois, winn, 
 
 ## Other models
 
@@ -58,8 +59,11 @@ Combination models
     - demo accuracy 55.92 (b: 43.04)
     - trois accuracy 57.00 (b: 41.27)
     - calgary accuracy 42.49 (b: 25.05)
-- 15_xgbin14_13: base of version 15 with add on xg_bin14 for class 14 & taking 17 from v. 13 in that order
+- 15_xgbin14_13: base of version 15 with add on xg_bin14 for class 14 & taking 15 from v. 13 in that order
     - demo: 55.60 (38.28)
     - cal: 53.52 (31.75)
+- 15_xgbin14_16: base v. 15 w/ xg_bin14 for class 14 and v. 13 for class 15
+    - demo: 56.82 (39.71)
+    - cal: 32.18 (55.74)
     
     

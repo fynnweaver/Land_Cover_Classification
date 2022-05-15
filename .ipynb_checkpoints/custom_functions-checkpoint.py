@@ -24,8 +24,8 @@ from copy import deepcopy
 def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11], calculate_edge = None, sigma = 3):
     """
     Use gdal to create a labelled dataframe of Sentinal-2 band values from a folder of raw band geotiffs using land cover
-    classification from NRCAN. NRCAN extent must be processed using GIS to be the same width, height, projection and
-    resolution as clipped raws extents.
+    classification from NRCAN. NRCAN extent must be in directory above raw directory. It should be processed using GIS to be 
+    the same width, height, projection and resolution as clipped raws extents.
 
     INPUT
     -----
@@ -62,6 +62,7 @@ def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-
     
     try:
         raw_df['edge'] = edge.flatten()
+        raw_df['edge'] = raw_df['edge'].astype('int')
     except:
         pass
     
@@ -76,10 +77,10 @@ def gdal_to_dataframe(dir_path, nrcan_name = 'NRCAN_transformed.tif', index = [-
 
 #Filter photos (gaussian or median) from directory path
 def filter_raws(path_to_dir,  sigma = 5, nrcan_name = 'NRCAN_transformed.tif', index = [-14, -11], filter_type = 'gaussian'):
-     """
+    """
     Use gdal to create a labelled dataframe of filtered Sentinal-2 band values from a folder of raw band geotiffs 
     Classification comes from NRCAN extent which must be processed using GIS to be the same width, height, projection and
-    resolution as clipped raws extents.
+    resolution as clipped raws extents. NRCAN extent must be in directory above raw directory.
 
     INPUT
     -----
@@ -159,6 +160,14 @@ def outlier_fix(dataframe):
     #if not (ex: its X dataframe) just return frame
     except:
         return new_frame
+    
+    
+def add_fix_column(raws, target):
+    """
+    Save just one column of outlier fixing applied to target input band onto input dataframe
+    """
+    raws[target] = outlier_fix(raws)[target]
+    return raws
         
 def add_layers(df):
     """
@@ -225,7 +234,6 @@ def get_geocoord(raws_path):
     file_name = list(os.listdir(raws_path))[0]
     file_path = os.path.join(raws_path, file_name)
     
-    
     #open raw and get affine
     ds = gdal.Open(file_path, gdal.GA_ReadOnly)
     T0 = Affine.from_gdal(*ds.GetGeoTransform())
@@ -241,13 +249,13 @@ def get_geocoord(raws_path):
     
     # All eastings and northings -- this is much faster than np.apply_along_axis
     eastings, northings = np.vectorize(rc2xy, otypes=[float, float])(rows, cols)
-
     #convert to columns
     lat = eastings.flatten()
     long = northings.flatten()
     
     return lat, long
 
+#combining all options for custom preprocess function
 #combining all options for custom preprocess function
 def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0, 3], target_edge = False, geocoords = False,
                  target_outlier = False, gaussian = False, clustering = False, calculate_layers = False):
@@ -315,24 +323,21 @@ def process_data(path_csv, path_raws, nrcan_name = 'land_cover.tif', index = [0,
             X_demo = outlier_fix(X_demo)
     
     if gaussian == True:
-        #reset demo raw for matching filtering
-        raw = gdal_to_dataframe(path_raws, nrcan_name = nrcan_name, index = index)
-        #demo_raw = outlier_fix(demo_raw)
         #filter raws from path
         gauss_demo = filter_raws(path_raws, nrcan_name = nrcan_name, index = index)
 
         #concat gauss and raw
         gauss_demo_reset = gauss_demo.drop('y', axis = 1)
         #rename gauss columns
-        gauss_names = [f'{name}g' for name in gauss_demo_reset.columns]
-        gauss_demo_reset.columns = gauss_names
+        gauss_names_reset = [f'{name}g' for name in gauss_demo_reset.columns]
+        gauss_demo_reset.columns = gauss_names_reset
         #reset indices
         raw.reset_index(inplace=True, drop=True)
         gauss_demo_reset.reset_index(inplace=True, drop=True)    
-        merged_df = pd.concat([raw, gauss_demo_reset], axis = 1)
+        merged_df = pd.concat([X_demo, gauss_demo_reset], axis = 1)
 
         #select X values from gaussian dataframe
-        X_demo = merged_df.drop('y', axis = 1)
+        X_demo = merged_df
 
     if clustering is not False:
         param = pickle.load(open(clustering, 'rb'))
@@ -377,7 +382,7 @@ def convert_binary(dataframe, target_class, col_name = 'y'):
     return dataframe
 
 #combining multiple models by updating a base model with specified classes of additional models
-def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], class_lists = [[14], [15]], nrcan_name = 'land_cover.tif'):
+def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], nrcan_name = 'land_cover.tif'):
     
     """
     Function using master processing function to generate test predictions and then overlap the output of multiple models.
@@ -436,13 +441,14 @@ def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0,
                                       calculate_layers = process_dict['calculate_layers'][i], nrcan_name = nrcan_name)
         pred = pd.DataFrame(models[i].predict(test_X))
         pred_list.append(pred)
-        
-        if i in binary['model']:
-            pred = pd.DataFrame((models[i].predict_proba(test_X)[:,1] >= 0.6).astype(bool))
-            pred_list.append(pred)
-               
-            for j in range(len(binary['class'])):
-                pred_list[i] = pred_list[i].replace(1, binary['class'][j])
+                
+    return pred_list, test_y
+
+                
+def combine_pred(pred_list, class_lists, binary):
+ 
+    bin_pred = pred_list[binary['model']]
+    bin_pred = bin_pred.replace(1, binary['class'])
     
     #take first model as base model
     base_pred = pred_list[0]
