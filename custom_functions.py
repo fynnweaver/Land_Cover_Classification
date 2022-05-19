@@ -382,7 +382,7 @@ def convert_binary(dataframe, target_class, col_name = 'y'):
     return dataframe
 
 #combining multiple models by updating a base model with specified classes of additional models
-def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0, 3], nrcan_name = 'land_cover.tif'):
+def predict_combo(models, path_csv, path_raws, process_dict, index = [0, 3], nrcan_name = 'land_cover.tif'):
     
     """
     Function using master processing function to generate test predictions and then overlap the output of multiple models.
@@ -447,8 +447,10 @@ def predict_combo(models, path_csv, path_raws, process_dict, binary, index = [0,
                 
 def combine_pred(pred_list, class_lists, binary):
  
-    bin_pred = pred_list[binary['model']]
-    bin_pred = bin_pred.replace(1, binary['class'])
+    bin_pred = pred_list[binary['model'][0]]
+    bin_pred = bin_pred.replace(1, binary['class'][0])
+    pred_list[binary['model'][0]] = bin_pred
+    
     
     #take first model as base model
     base_pred = pred_list[0]
@@ -461,7 +463,7 @@ def combine_pred(pred_list, class_lists, binary):
         #convert to int
         base_pred = base_pred.astype('int')
     
-    return base_pred, test_y
+    return base_pred
 
 #--EVALUATION--
 
