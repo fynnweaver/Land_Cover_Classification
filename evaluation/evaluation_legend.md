@@ -39,7 +39,7 @@ Shorthand:
 - version 11 = 46.11 (b: 39.43) || raws with calculated layers & B01f with B01 where outliers < q3x2 = median & 60K/class no snow || sim, lab, tor, james, sjames, calgary
 - version 12 = 48.10 (b: 39.83) || raws & calculated layers (4) & cluster (n = 4) & 100K/class 49K snow class || sim, lab, tor, james, sjames, cal, trois
 - version 13 = 48.11 (40.06) || raws & calculated layers (4) & edge ('B03', sig = 1) & gaussian (sig 5) & clustering & 150K/class 49K snow class || sim, lab, tor, james, sjames, cal
-- version 14 = 54.39 (40.91) || raws & calc layers (4) & B01f with B01 where outliers < q3x2 = median & edge ('B8A, sig = 3) & 100K/class 47K snow class || sim , lab, tor, james
+- version 14 = 51.74 (42.00) || raws & calc layers (4) & edge ('B8A, sig = 3) & 100K/class 47K snow class || sim , lab, tor, james, sjames
 - version 15 = 53.86 (38.94) || raws & calc layers (4) & geocoords & edge ('B8A, sig = 3) & 150K/class 49K snow || sim, lab, tor, james, sjames, cal, trois, winn
 - version 16 = 48.84 (39.60) || raws & calc layers (4) & geocoords & edge ('B8A', sig = 3) & gaussian filter (sig 3) & 250K/class 49K snow 150K class 11 || sim, lab, tor, james, sjames, cal, trois, winn, 
 
