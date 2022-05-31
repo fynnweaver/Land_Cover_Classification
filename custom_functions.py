@@ -447,9 +447,11 @@ def predict_combo(models, path_csv, path_raws, process_dict, index = [0, 3], nrc
                 
 def combine_pred(pred_list, class_lists, binary):
  
-    bin_pred = pred_list[binary['model'][0]]
-    bin_pred = bin_pred.replace(1, binary['class'][0])
-    pred_list[binary['model'][0]] = bin_pred
+    #replace any binary model output with class number
+    if binary is not None:
+        bin_pred = pred_list[binary['model'][0]]
+        bin_pred = bin_pred.replace(1, binary['class'][0])
+        pred_list[binary['model'][0]] = bin_pred
     
     
     #take first model as base model
